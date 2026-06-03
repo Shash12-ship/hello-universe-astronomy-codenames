@@ -1,4 +1,4 @@
-# Hello Universe Notebook Submission Packet
+# Hello Universe Notebook Submission 
 
 ## Notebook title
 Exploring Astronomy Word Associations with Small Language Models
