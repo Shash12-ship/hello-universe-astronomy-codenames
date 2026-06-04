@@ -1,0 +1,22 @@
+title: Hello Universe! Astronomy Codenames
+author: Shashwat Sourav
+copyright: 2026
+logo: HelloUniverseLogo.png
+
+execute:
+  execute_notebooks: off
+  timeout: -1
+
+repository:
+  url: https://github.com/Shash12-ship/hello-universe-astronomy-codenames
+  branch: main
+
+html:
+  use_issues_button: true
+  use_repository_button: true
+
+launch_buttons:
+  binderhub_url: ""
+
+bibtex_bibfiles:
+  - references.bib

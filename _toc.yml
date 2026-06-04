@@ -1,0 +1,7 @@
+# Table of contents
+# Learn more at https://jupyterbook.org/customize/toc.html
+
+format: jb-book
+root: intro
+chapters:
+- file: notebooks/hello-universe/Exploring_Astronomy_Codenames_with_Language_Models/Exploring_Astronomy_Codenames_with_Language_Models.ipynb
