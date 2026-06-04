@@ -383,6 +383,10 @@
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#comparing-generation-and-embedding-search">Comparing generation and embedding search</a></li>
 </ul>
 </li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#a-tiny-llama-player-visible-reasoning-trace">10. A tiny Llama player: visible reasoning trace</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#how-to-interpret-this-mini-experiment">How to interpret this mini-experiment</a></li>
+</ul>
+</li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#exercises">10. Exercises</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#faq">FAQ</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#about-this-notebook">About this Notebook</a></li>
@@ -858,6 +862,175 @@
 <p>A generated clue may be creative but hard to control. An embedding-selected clue is easier to inspect, but only if the candidate list contains good clues.</p>
 </section>
 </section>
+<section id="a-tiny-llama-player-visible-reasoning-trace">
+<h2>10. A tiny Llama player: visible reasoning trace<a class="headerlink" href="#a-tiny-llama-player-visible-reasoning-trace" title="Link to this heading">#</a></h2>
+<p>So far, we have used embeddings to choose Codenames-style clues. Now we add a small language model and ask a different question:</p>
+<p><strong>Can a tiny open-weight language model explain how it chooses an astronomy clue?</strong></p>
+<p>We use this as a teaching experiment. The goal is not to prove that the model truly understands astronomy. Instead, we ask the model to produce a short, visible explanation of its clue choice, and then we compare that explanation with the embedding-based scoring from earlier sections.</p>
+<p>Important note: this is <strong>not</strong> the model’s hidden internal chain of thought. We cannot directly read the model’s private internal reasoning from normal text generation. What we can inspect is the model’s <strong>generated rationale</strong>: the explanation it writes down when asked to explain its clue in a short, student-readable way.</p>
+<p>This section is optional because it downloads a small open-weight model. It is designed to run in Google Colab using a small GPU runtime.</p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Optional Colab setup.</span>
+<span class="c1"># Run this cell in Google Colab if transformers/accelerate are not already installed.</span>
+<span class="c1"># If you are running locally and already have these packages, you can skip this cell.</span>
+
+<span class="o">%</span><span class="k">pip</span> install -q transformers accelerate torch
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">transformers</span><span class="w"> </span><span class="kn">import</span> <span class="n">AutoTokenizer</span><span class="p">,</span> <span class="n">AutoModelForCausalLM</span><span class="p">,</span> <span class="n">pipeline</span>
+
+<span class="c1"># Smallest instruction-tuned Llama text model.</span>
+<span class="c1"># You may need to accept the model license on Hugging Face and log in with a HF token.</span>
+<span class="n">MODEL_ID</span> <span class="o">=</span> <span class="s2">&quot;meta-llama/Llama-3.2-1B-Instruct&quot;</span>
+
+<span class="n">device</span> <span class="o">=</span> <span class="mi">0</span> <span class="k">if</span> <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">is_available</span><span class="p">()</span> <span class="k">else</span> <span class="o">-</span><span class="mi">1</span>
+<span class="n">dtype</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">float16</span> <span class="k">if</span> <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">is_available</span><span class="p">()</span> <span class="k">else</span> <span class="n">torch</span><span class="o">.</span><span class="n">float32</span>
+
+<span class="n">tokenizer</span> <span class="o">=</span> <span class="n">AutoTokenizer</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span><span class="n">MODEL_ID</span><span class="p">)</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">AutoModelForCausalLM</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span>
+    <span class="n">MODEL_ID</span><span class="p">,</span>
+    <span class="n">torch_dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">,</span>
+    <span class="n">device_map</span><span class="o">=</span><span class="s2">&quot;auto&quot;</span> <span class="k">if</span> <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">is_available</span><span class="p">()</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">llama_pipe</span> <span class="o">=</span> <span class="n">pipeline</span><span class="p">(</span>
+    <span class="s2">&quot;text-generation&quot;</span><span class="p">,</span>
+    <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span>
+    <span class="n">tokenizer</span><span class="o">=</span><span class="n">tokenizer</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Loaded:&quot;</span><span class="p">,</span> <span class="n">MODEL_ID</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;CUDA available:&quot;</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">is_available</span><span class="p">())</span>
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">astronomy_board</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s2">&quot;galaxy&quot;</span><span class="p">,</span> <span class="s2">&quot;redshift&quot;</span><span class="p">,</span> <span class="s2">&quot;spectrum&quot;</span><span class="p">,</span> <span class="s2">&quot;telescope&quot;</span><span class="p">,</span> <span class="s2">&quot;planet&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;nebula&quot;</span><span class="p">,</span> <span class="s2">&quot;JWST&quot;</span><span class="p">,</span> <span class="s2">&quot;supernova&quot;</span><span class="p">,</span> <span class="s2">&quot;dust&quot;</span><span class="p">,</span> <span class="s2">&quot;orbit&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;catalog&quot;</span><span class="p">,</span> <span class="s2">&quot;photometry&quot;</span><span class="p">,</span> <span class="s2">&quot;black hole&quot;</span><span class="p">,</span> <span class="s2">&quot;star&quot;</span><span class="p">,</span> <span class="s2">&quot;exoplanet&quot;</span><span class="p">,</span>
+<span class="p">]</span>
+
+<span class="n">target_words</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;galaxy&quot;</span><span class="p">,</span> <span class="s2">&quot;redshift&quot;</span><span class="p">]</span>
+<span class="n">assassin_word</span> <span class="o">=</span> <span class="s2">&quot;planet&quot;</span>
+
+<span class="n">prompt</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="s2">&quot;You are playing an astronomy-themed version of Codenames.</span><span class="se">\n\n</span><span class="s2">&quot;</span>
+    <span class="sa">f</span><span class="s2">&quot;Board words:</span><span class="se">\n</span><span class="si">{</span><span class="n">astronomy_board</span><span class="si">}</span><span class="se">\n\n</span><span class="s2">&quot;</span>
+    <span class="sa">f</span><span class="s2">&quot;Your target words are:</span><span class="se">\n</span><span class="si">{</span><span class="n">target_words</span><span class="si">}</span><span class="se">\n\n</span><span class="s2">&quot;</span>
+    <span class="sa">f</span><span class="s2">&quot;The assassin word is:</span><span class="se">\n</span><span class="si">{</span><span class="n">assassin_word</span><span class="si">}</span><span class="se">\n\n</span><span class="s2">&quot;</span>
+    <span class="s2">&quot;Task:</span><span class="se">\n</span><span class="s2">&quot;</span>
+    <span class="s2">&quot;Give one single-word clue that points to the target words but avoids the assassin word.</span><span class="se">\n\n</span><span class="s2">&quot;</span>
+    <span class="s2">&quot;Output exactly in this format:</span><span class="se">\n\n</span><span class="s2">&quot;</span>
+    <span class="s2">&quot;CLUE: &lt;one word&gt;</span><span class="se">\n</span><span class="s2">&quot;</span>
+    <span class="s2">&quot;NUMBER: &lt;number&gt;</span><span class="se">\n</span><span class="s2">&quot;</span>
+    <span class="s2">&quot;VISIBLE RATIONALE:</span><span class="se">\n</span><span class="s2">&quot;</span>
+    <span class="s2">&quot;1. &lt;short reason&gt;</span><span class="se">\n</span><span class="s2">&quot;</span>
+    <span class="s2">&quot;2. &lt;short reason&gt;</span><span class="se">\n</span><span class="s2">&quot;</span>
+    <span class="s2">&quot;3. &lt;short reason&gt;</span><span class="se">\n</span><span class="s2">&quot;</span>
+    <span class="s2">&quot;WORDS TO AVOID: &lt;comma-separated words&gt;</span><span class="se">\n</span><span class="s2">&quot;</span>
+<span class="p">)</span>
+
+<span class="n">messages</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="p">{</span>
+        <span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;system&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;You are a careful astronomy tutor. Keep explanations short, concrete, and beginner-friendly.&quot;</span>
+    <span class="p">},</span>
+    <span class="p">{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;user&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="n">prompt</span><span class="p">},</span>
+<span class="p">]</span>
+
+<span class="n">formatted_prompt</span> <span class="o">=</span> <span class="n">tokenizer</span><span class="o">.</span><span class="n">apply_chat_template</span><span class="p">(</span>
+    <span class="n">messages</span><span class="p">,</span>
+    <span class="n">tokenize</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="n">add_generation_prompt</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">output</span> <span class="o">=</span> <span class="n">llama_pipe</span><span class="p">(</span>
+    <span class="n">formatted_prompt</span><span class="p">,</span>
+    <span class="n">max_new_tokens</span><span class="o">=</span><span class="mi">180</span><span class="p">,</span>
+    <span class="n">do_sample</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="n">return_full_text</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<span class="p">)[</span><span class="mi">0</span><span class="p">][</span><span class="s2">&quot;generated_text&quot;</span><span class="p">]</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">output</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">sklearn.feature_extraction.text</span><span class="w"> </span><span class="kn">import</span> <span class="n">TfidfVectorizer</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">sklearn.metrics.pairwise</span><span class="w"> </span><span class="kn">import</span> <span class="n">cosine_similarity</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">extract_clue</span><span class="p">(</span><span class="n">text</span><span class="p">):</span>
+    <span class="n">match</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;CLUE:\s*([A-Za-z][A-Za-z\-]*)&quot;</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">match</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+    <span class="k">return</span> <span class="kc">None</span>
+
+<span class="n">model_clue</span> <span class="o">=</span> <span class="n">extract_clue</span><span class="p">(</span><span class="n">output</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Model clue:&quot;</span><span class="p">,</span> <span class="n">model_clue</span><span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">simple_tfidf_similarity</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="n">words</span><span class="p">):</span>
+    <span class="n">vectorizer</span> <span class="o">=</span> <span class="n">TfidfVectorizer</span><span class="p">()</span><span class="o">.</span><span class="n">fit</span><span class="p">([</span><span class="n">query</span><span class="p">]</span> <span class="o">+</span> <span class="n">words</span><span class="p">)</span>
+    <span class="n">vectors</span> <span class="o">=</span> <span class="n">vectorizer</span><span class="o">.</span><span class="n">transform</span><span class="p">([</span><span class="n">query</span><span class="p">]</span> <span class="o">+</span> <span class="n">words</span><span class="p">)</span>
+    <span class="n">sims</span> <span class="o">=</span> <span class="n">cosine_similarity</span><span class="p">(</span><span class="n">vectors</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">vectors</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">sims</span>
+
+<span class="k">if</span> <span class="n">model_clue</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">sims</span> <span class="o">=</span> <span class="n">simple_tfidf_similarity</span><span class="p">(</span><span class="n">model_clue</span><span class="p">,</span> <span class="n">astronomy_board</span><span class="p">)</span>
+
+    <span class="n">rows</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">word</span><span class="p">,</span> <span class="n">sim</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">astronomy_board</span><span class="p">,</span> <span class="n">sims</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">word</span> <span class="ow">in</span> <span class="n">target_words</span><span class="p">:</span>
+            <span class="n">role</span> <span class="o">=</span> <span class="s2">&quot;target&quot;</span>
+        <span class="k">elif</span> <span class="n">word</span> <span class="o">==</span> <span class="n">assassin_word</span><span class="p">:</span>
+            <span class="n">role</span> <span class="o">=</span> <span class="s2">&quot;assassin&quot;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">role</span> <span class="o">=</span> <span class="s2">&quot;other&quot;</span>
+        <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">({</span><span class="s2">&quot;word&quot;</span><span class="p">:</span> <span class="n">word</span><span class="p">,</span> <span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="n">role</span><span class="p">,</span> <span class="s2">&quot;similarity_to_model_clue&quot;</span><span class="p">:</span> <span class="n">sim</span><span class="p">})</span>
+
+    <span class="n">score_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span><span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="s2">&quot;similarity_to_model_clue&quot;</span><span class="p">,</span> <span class="n">ascending</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="n">display</span><span class="p">(</span><span class="n">score_df</span><span class="p">)</span>
+
+    <span class="n">target_score</span> <span class="o">=</span> <span class="n">score_df</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="s2">&quot;role == &#39;target&#39;&quot;</span><span class="p">)[</span><span class="s2">&quot;similarity_to_model_clue&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+    <span class="n">assassin_score</span> <span class="o">=</span> <span class="n">score_df</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="s2">&quot;role == &#39;assassin&#39;&quot;</span><span class="p">)[</span><span class="s2">&quot;similarity_to_model_clue&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+    <span class="n">safety_margin</span> <span class="o">=</span> <span class="n">target_score</span> <span class="o">-</span> <span class="n">assassin_score</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Mean target similarity: </span><span class="si">{</span><span class="n">target_score</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Assassin similarity: </span><span class="si">{</span><span class="n">assassin_score</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Safety margin: </span><span class="si">{</span><span class="n">safety_margin</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="k">else</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Could not extract a clue. Try rerunning the generation cell or lowering output constraints.&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
+<section id="how-to-interpret-this-mini-experiment">
+<h3>How to interpret this mini-experiment<a class="headerlink" href="#how-to-interpret-this-mini-experiment" title="Link to this heading">#</a></h3>
+<p>This tiny experiment gives two complementary views of the same Codenames decision.</p>
+<p>The language model gives a <strong>human-readable explanation</strong> of why a clue might connect the target words. The embedding score gives a <strong>numerical check</strong> of whether the clue is closer to the target words than to the assassin word.</p>
+<p>A good clue should have:</p>
+<ol class="arabic simple">
+<li><p>a clear visible rationale,</p></li>
+<li><p>high similarity to the target words,</p></li>
+<li><p>low similarity to the assassin word,</p></li>
+<li><p>a positive safety margin.</p></li>
+</ol>
+<p>This makes the notebook more than a clue generator. It becomes a small, inspectable experiment about language-model behavior: when a model explains a clue, do its words line up with the geometry of the embedding space?</p>
+</section>
+</section>
 <section id="exercises">
 <h2>10. Exercises<a class="headerlink" href="#exercises" title="Link to this heading">#</a></h2>
 <ol class="arabic simple">
@@ -970,6 +1143,10 @@ Affiliations: Washington University in St. Louis; Oak Ridge National Laboratory;
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#avoiding-the-assassin-semantic-risk">8. Avoiding the assassin: semantic risk</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#optional-extension-ask-a-small-language-model-for-clues">9. Optional extension: ask a small language model for clues</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#comparing-generation-and-embedding-search">Comparing generation and embedding search</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#a-tiny-llama-player-visible-reasoning-trace">10. A tiny Llama player: visible reasoning trace</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#how-to-interpret-this-mini-experiment">How to interpret this mini-experiment</a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#exercises">10. Exercises</a></li>
