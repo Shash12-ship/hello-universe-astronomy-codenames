@@ -34,7 +34,7 @@
     <link rel="stylesheet" type="text/css" href="_static/styles/sphinx-book-theme.css?v=3c74b3bc" />
     <link rel="stylesheet" type="text/css" href="_static/togglebutton.css?v=9c3e77be" />
     <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
-    <link rel="stylesheet" type="text/css" href="_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link rel="stylesheet" type="text/css" href="_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
     <link rel="stylesheet" type="text/css" href="_static/sphinx-thebe.css?v=4fa983c6" />
     <link rel="stylesheet" type="text/css" href="_static/sphinx-design.min.css?v=95c83b7e" />
   
@@ -380,6 +380,7 @@
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#avoiding-the-assassin-semantic-risk">8. Avoiding the assassin: semantic risk</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#optional-extension-ask-a-small-language-model-for-clues">9. Optional extension: ask a small language model for clues</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#asking-for-a-short-visible-explanation">Asking for a short visible explanation</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#comparing-generation-and-embedding-search">Comparing generation and embedding search</a></li>
 </ul>
 </li>
@@ -820,35 +821,28 @@ Michelle Ntampaka: Space Telescope Science Institute, Baltimore, MD, USA</p>
 </div>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
-<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">generate_codenames_clue</span><span class="p">(</span><span class="n">prompt</span><span class="p">,</span> <span class="n">max_new_tokens</span><span class="o">=</span><span class="mi">24</span><span class="p">):</span>
-    <span class="k">if</span> <span class="ow">not</span> <span class="n">RUN_SMALL_LM_EXTENSION</span><span class="p">:</span>
-        <span class="k">return</span> <span class="s2">&quot;Small language-model extension is disabled. Set RUN_SMALL_LM_EXTENSION = True and rerun the setup cell.&quot;</span>
-
-    <span class="n">inputs</span> <span class="o">=</span> <span class="n">tokenizer</span><span class="p">(</span><span class="n">prompt</span><span class="p">,</span> <span class="n">return_tensors</span><span class="o">=</span><span class="s2">&quot;pt&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
-    <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
-        <span class="n">outputs</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span>
-            <span class="o">**</span><span class="n">inputs</span><span class="p">,</span>
-            <span class="n">max_new_tokens</span><span class="o">=</span><span class="n">max_new_tokens</span><span class="p">,</span>
-            <span class="n">do_sample</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
-            <span class="n">pad_token_id</span><span class="o">=</span><span class="n">tokenizer</span><span class="o">.</span><span class="n">eos_token_id</span><span class="p">,</span>
-        <span class="p">)</span>
-    <span class="n">new_tokens</span> <span class="o">=</span> <span class="n">outputs</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="n">inputs</span><span class="p">[</span><span class="s2">&quot;input_ids&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]:]</span>
-    <span class="k">return</span> <span class="n">tokenizer</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="n">new_tokens</span><span class="p">,</span> <span class="n">skip_special_tokens</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
-
-<span class="n">prompt</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
-<span class="s2">You are the spymaster in Codenames.</span>
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">prompt</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">You are playing Codenames.</span>
 
 <span class="s2">Board words:</span>
 <span class="s2">JWST, Hubble, star, spectrum, archive, dust, pixel, quasar</span>
 
-<span class="s2">Your team words:</span>
+<span class="s2">Target words:</span>
 <span class="s2">JWST, Hubble</span>
 
-<span class="s2">Give exactly one clue word and the number 2.</span>
-<span class="s2">Do not explain.</span>
+<span class="s2">Forbidden words:</span>
+<span class="s2">star, spectrum, archive, dust, pixel, quasar</span>
 
-<span class="s2">Answer format:</span>
-<span class="s2">clue 2</span>
+<span class="s2">Return exactly one line.</span>
+<span class="s2">Return only one clue word followed by the number 2.</span>
+<span class="s2">Do not explain.</span>
+<span class="s2">Do not list multiple clues.</span>
+
+<span class="s2">Examples:</span>
+<span class="s2">space 2</span>
+<span class="s2">telescope 2</span>
+
+<span class="s2">Answer:</span>
 <span class="s2">&quot;&quot;&quot;</span>
 
 <span class="nb">print</span><span class="p">(</span><span class="n">generate_codenames_clue</span><span class="p">(</span><span class="n">prompt</span><span class="p">))</span>
@@ -856,6 +850,66 @@ Michelle Ntampaka: Space Telescope Science Institute, Baltimore, MD, USA</p>
 </div>
 </div>
 </div>
+<section id="asking-for-a-short-visible-explanation">
+<h3>Asking for a short visible explanation<a class="headerlink" href="#asking-for-a-short-visible-explanation" title="Link to this heading">#</a></h3>
+<p>The previous cell asks the model for a clue only. We can also ask the model to produce a short visible explanation of its clue.</p>
+<p>This explanation should be interpreted carefully. It is the model’s generated rationale, not direct access to the model’s hidden internal reasoning.</p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">generate_codenames_clue_with_explanation</span><span class="p">(</span><span class="n">prompt</span><span class="p">,</span> <span class="n">max_new_tokens</span><span class="o">=</span><span class="mi">80</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Ask the optional small language model for a clue and a short visible explanation.</span>
+
+<span class="sd">    This is useful for teaching, but the explanation should not be interpreted as</span>
+<span class="sd">    the model&#39;s true hidden reasoning.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">RUN_SMALL_LM_EXTENSION</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">&quot;Small language-model extension is disabled. Set RUN_SMALL_LM_EXTENSION = True and rerun the setup cell.&quot;</span>
+
+    <span class="n">inputs</span> <span class="o">=</span> <span class="n">tokenizer</span><span class="p">(</span><span class="n">prompt</span><span class="p">,</span> <span class="n">return_tensors</span><span class="o">=</span><span class="s2">&quot;pt&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+
+    <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+        <span class="n">outputs</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span>
+            <span class="o">**</span><span class="n">inputs</span><span class="p">,</span>
+            <span class="n">max_new_tokens</span><span class="o">=</span><span class="n">max_new_tokens</span><span class="p">,</span>
+            <span class="n">do_sample</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+            <span class="n">pad_token_id</span><span class="o">=</span><span class="n">tokenizer</span><span class="o">.</span><span class="n">eos_token_id</span><span class="p">,</span>
+            <span class="n">eos_token_id</span><span class="o">=</span><span class="n">tokenizer</span><span class="o">.</span><span class="n">eos_token_id</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="n">new_tokens</span> <span class="o">=</span> <span class="n">outputs</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="n">inputs</span><span class="p">[</span><span class="s2">&quot;input_ids&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]:]</span>
+    <span class="k">return</span> <span class="n">tokenizer</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="n">new_tokens</span><span class="p">,</span> <span class="n">skip_special_tokens</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+
+
+<span class="n">explanation_prompt</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">You are playing Codenames.</span>
+
+<span class="s2">Board words:</span>
+<span class="s2">JWST, Hubble, star, spectrum, archive, dust, pixel, quasar</span>
+
+<span class="s2">Target words:</span>
+<span class="s2">JWST, Hubble</span>
+
+<span class="s2">Forbidden words:</span>
+<span class="s2">star, spectrum, archive, dust, pixel, quasar</span>
+
+<span class="s2">Give one clue word with the number 2.</span>
+<span class="s2">Then give one short sentence explaining why the clue links the two target words.</span>
+
+<span class="s2">Use this exact format:</span>
+<span class="s2">Clue: &lt;word&gt; 2</span>
+<span class="s2">Explanation: &lt;one short sentence&gt;</span>
+
+<span class="s2">Answer:</span>
+<span class="s2">&quot;&quot;&quot;</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">generate_codenames_clue_with_explanation</span><span class="p">(</span><span class="n">explanation_prompt</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+</div>
+<p>The explanation above is useful for inspection, but it should not be treated as the model’s hidden chain of thought. It is a generated text explanation, and generated explanations can be incomplete or unfaithful to the model’s actual decision process.</p>
+</section>
 <section id="comparing-generation-and-embedding-search">
 <h3>Comparing generation and embedding search<a class="headerlink" href="#comparing-generation-and-embedding-search" title="Link to this heading">#</a></h3>
 <p>The language model and embedding model answer different questions:</p>
@@ -1148,6 +1202,7 @@ Michelle Ntampaka — Space Telescope Science Institute, 3700 San Martin Drive, 
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#avoiding-the-assassin-semantic-risk">8. Avoiding the assassin: semantic risk</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#optional-extension-ask-a-small-language-model-for-clues">9. Optional extension: ask a small language model for clues</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#asking-for-a-short-visible-explanation">Asking for a short visible explanation</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#comparing-generation-and-embedding-search">Comparing generation and embedding search</a></li>
 </ul>
 </li>
