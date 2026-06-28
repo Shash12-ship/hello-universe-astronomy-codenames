@@ -1034,8 +1034,11 @@ Michelle Ntampaka: Space Telescope Science Institute, Baltimore, MD, USA</p>
 <section id="what-this-result-means">
 <h3>What this result means<a class="headerlink" href="#what-this-result-means" title="Link to this heading">#</a></h3>
 <p>The small language model is allowed to propose a clue, but we validate the clue before using it.</p>
-<p>If the model copies a board word such as <code class="docutils literal notranslate"><span class="pre">galaxy</span></code> or <code class="docutils literal notranslate"><span class="pre">redshift</span></code>, the notebook rejects that clue because a Codenames clue should be a new word that points toward the targets. In that case, the notebook falls back to a stable educational clue such as <code class="docutils literal notranslate"><span class="pre">cosmology</span></code>.</p>
-<p>This keeps the example clear for readers while still showing an important lesson: generated language-model outputs often need validation before they are used in a downstream workflow.</p>
+<p>Sometimes a small model does not follow the requested format. For example, it may output a number, start explaining the puzzle, or copy one of the board words. When that happens, the notebook rejects the raw model output and uses a stable fallback clue such as <code class="docutils literal notranslate"><span class="pre">cosmology</span></code>.</p>
+<p>The embedding table then checks whether the final clue is actually useful. A good clue should have reasonably high similarity to both target words and lower similarity to the assassin word. The safety margin is:</p>
+<p><code class="docutils literal notranslate"><span class="pre">mean</span> <span class="pre">target</span> <span class="pre">similarity</span> <span class="pre">-</span> <span class="pre">assassin</span> <span class="pre">similarity</span></code></p>
+<p>A positive margin means the clue is closer to the target words than to the assassin word on average. A small positive margin means the clue is usable for teaching, but still somewhat ambiguous. That ambiguity is part of the lesson: language-model outputs and embedding scores should be inspected, not accepted blindly.</p>
+<p>This keeps the example clear for readers while showing an important workflow lesson: generated language-model outputs often need validation before they are used downstream.</p>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">prompt</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
