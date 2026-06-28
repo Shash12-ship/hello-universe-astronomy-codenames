@@ -379,7 +379,8 @@
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#avoiding-the-assassin-semantic-risk">8. Avoiding the assassin: semantic risk</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#optional-extension-ask-a-small-language-model-for-clues">9. Optional extension: ask a small language model for clues</a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#asking-for-a-short-visible-explanation">Asking for a short visible explanation</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#generating-and-validating-a-small-model-codenames-clue">Generating and validating a small-model Codenames clue</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#what-this-result-means">What this result means</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#comparing-generation-and-embedding-search">Comparing generation and embedding search</a></li>
 </ul>
 </li>
@@ -818,6 +819,188 @@ Michelle Ntampaka: Space Telescope Science Institute, Baltimore, MD, USA</p>
 </div>
 </div>
 </div>
+<section id="generating-and-validating-a-small-model-codenames-clue">
+<h3>Generating and validating a small-model Codenames clue<a class="headerlink" href="#generating-and-validating-a-small-model-codenames-clue" title="Link to this heading">#</a></h3>
+<p>This section asks the optional small language model for a Codenames clue, but then validates the output. If the model copies a board word or gives an invalid clue, we use a stable fallback clue so the tutorial remains easy to interpret.</p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">sklearn.metrics.pairwise</span><span class="w"> </span><span class="kn">import</span> <span class="n">cosine_similarity</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">clean_model_clue</span><span class="p">(</span><span class="n">raw_text</span><span class="p">,</span> <span class="n">board_words</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Clean a small language-model output into a single Codenames-style clue.</span>
+
+<span class="sd">    The clue is rejected if it copies a board word, because in Codenames the</span>
+<span class="sd">    clue should be a new word that points toward the targets.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">raw_text</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="n">first_line</span> <span class="o">=</span> <span class="nb">next</span><span class="p">((</span><span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">raw_text</span><span class="o">.</span><span class="n">splitlines</span><span class="p">()</span> <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()),</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+    <span class="n">first_line</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;^(clue|answer|clue\s*1)\s*[:\-]\s*&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="n">first_line</span><span class="p">,</span> <span class="n">flags</span><span class="o">=</span><span class="n">re</span><span class="o">.</span><span class="n">I</span><span class="p">)</span>
+    <span class="n">first_line</span> <span class="o">=</span> <span class="n">first_line</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;&quot;&#39;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;&#39;&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Extract first alphabetic clue-like token.</span>
+    <span class="n">match</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;\b([A-Za-z][A-Za-z\-]*)\b&quot;</span><span class="p">,</span> <span class="n">first_line</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">match</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="n">clue</span> <span class="o">=</span> <span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+    <span class="n">board_lower</span> <span class="o">=</span> <span class="p">{</span><span class="n">w</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">board_words</span><span class="p">}</span>
+
+    <span class="c1"># Reject clues that are copied directly from the board.</span>
+    <span class="k">if</span> <span class="n">clue</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="n">board_lower</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="k">return</span> <span class="n">clue</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">generate_raw_model_clue</span><span class="p">(</span><span class="n">prompt</span><span class="p">,</span> <span class="n">max_new_tokens</span><span class="o">=</span><span class="mi">32</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Generate raw text from the optional small language model.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">RUN_SMALL_LM_EXTENSION</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">&quot;Small language-model extension is disabled. Set RUN_SMALL_LM_EXTENSION = True and rerun the setup cell.&quot;</span>
+
+    <span class="n">inputs</span> <span class="o">=</span> <span class="n">tokenizer</span><span class="p">(</span><span class="n">prompt</span><span class="p">,</span> <span class="n">return_tensors</span><span class="o">=</span><span class="s2">&quot;pt&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+
+    <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+        <span class="n">outputs</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span>
+            <span class="o">**</span><span class="n">inputs</span><span class="p">,</span>
+            <span class="n">max_new_tokens</span><span class="o">=</span><span class="n">max_new_tokens</span><span class="p">,</span>
+            <span class="n">do_sample</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+            <span class="n">pad_token_id</span><span class="o">=</span><span class="n">tokenizer</span><span class="o">.</span><span class="n">eos_token_id</span><span class="p">,</span>
+            <span class="n">eos_token_id</span><span class="o">=</span><span class="n">tokenizer</span><span class="o">.</span><span class="n">eos_token_id</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="n">new_tokens</span> <span class="o">=</span> <span class="n">outputs</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="n">inputs</span><span class="p">[</span><span class="s2">&quot;input_ids&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]:]</span>
+    <span class="k">return</span> <span class="n">tokenizer</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="n">new_tokens</span><span class="p">,</span> <span class="n">skip_special_tokens</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">generate_validated_codenames_clue</span><span class="p">(</span><span class="n">prompt</span><span class="p">,</span> <span class="n">board_words</span><span class="p">,</span> <span class="n">fallback_clue</span><span class="o">=</span><span class="s2">&quot;cosmology&quot;</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Ask the optional small language model for a clue, then validate it.</span>
+
+<span class="sd">    If the model copies a board word or gives an invalid response, we fall back</span>
+<span class="sd">    to a hand-picked clue so the educational example remains clear and stable.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">raw</span> <span class="o">=</span> <span class="n">generate_raw_model_clue</span><span class="p">(</span><span class="n">prompt</span><span class="p">)</span>
+    <span class="n">clue</span> <span class="o">=</span> <span class="n">clean_model_clue</span><span class="p">(</span><span class="n">raw</span><span class="p">,</span> <span class="n">board_words</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">clue</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">clue</span> <span class="o">=</span> <span class="n">fallback_clue</span>
+        <span class="n">status</span> <span class="o">=</span> <span class="s2">&quot;fallback&quot;</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">status</span> <span class="o">=</span> <span class="s2">&quot;model&quot;</span>
+
+    <span class="k">return</span> <span class="n">clue</span><span class="p">,</span> <span class="n">raw</span><span class="p">,</span> <span class="n">status</span>
+
+
+<span class="n">lm_board_words</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s2">&quot;galaxy&quot;</span><span class="p">,</span> <span class="s2">&quot;redshift&quot;</span><span class="p">,</span> <span class="s2">&quot;spectrum&quot;</span><span class="p">,</span> <span class="s2">&quot;telescope&quot;</span><span class="p">,</span> <span class="s2">&quot;planet&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;nebula&quot;</span><span class="p">,</span> <span class="s2">&quot;JWST&quot;</span><span class="p">,</span> <span class="s2">&quot;supernova&quot;</span><span class="p">,</span> <span class="s2">&quot;dust&quot;</span><span class="p">,</span> <span class="s2">&quot;orbit&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;catalog&quot;</span><span class="p">,</span> <span class="s2">&quot;photometry&quot;</span><span class="p">,</span> <span class="s2">&quot;black hole&quot;</span><span class="p">,</span> <span class="s2">&quot;star&quot;</span><span class="p">,</span> <span class="s2">&quot;exoplanet&quot;</span>
+<span class="p">]</span>
+
+<span class="n">lm_target_words</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;galaxy&quot;</span><span class="p">,</span> <span class="s2">&quot;redshift&quot;</span><span class="p">]</span>
+<span class="n">lm_assassin_word</span> <span class="o">=</span> <span class="s2">&quot;planet&quot;</span>
+
+<span class="n">lm_prompt</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">You are playing Codenames.</span>
+
+<span class="s2">Board words:</span>
+<span class="s2">galaxy, redshift, spectrum, telescope, planet, nebula, JWST, supernova, dust, orbit, catalog, photometry, black hole, star, exoplanet</span>
+
+<span class="s2">Target words:</span>
+<span class="s2">galaxy, redshift</span>
+
+<span class="s2">Forbidden words:</span>
+<span class="s2">spectrum, telescope, planet, nebula, JWST, supernova, dust, orbit, catalog, photometry, black hole, star, exoplanet</span>
+
+<span class="s2">Return exactly one clue word followed by the number 2.</span>
+<span class="s2">The clue must NOT be one of the board words.</span>
+<span class="s2">Do not explain.</span>
+
+<span class="s2">Good examples:</span>
+<span class="s2">cosmology 2</span>
+<span class="s2">distance 2</span>
+<span class="s2">expansion 2</span>
+
+<span class="s2">Bad examples:</span>
+<span class="s2">galaxy 2</span>
+<span class="s2">redshift 2</span>
+<span class="s2">planet 2</span>
+
+<span class="s2">Answer:</span>
+<span class="s2">&quot;&quot;&quot;</span>
+
+<span class="n">model_clue</span><span class="p">,</span> <span class="n">raw_model_output</span><span class="p">,</span> <span class="n">clue_source</span> <span class="o">=</span> <span class="n">generate_validated_codenames_clue</span><span class="p">(</span>
+    <span class="n">lm_prompt</span><span class="p">,</span>
+    <span class="n">lm_board_words</span><span class="p">,</span>
+    <span class="n">fallback_clue</span><span class="o">=</span><span class="s2">&quot;cosmology&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Raw model output: </span><span class="si">{</span><span class="n">raw_model_output</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Final clue used: </span><span class="si">{</span><span class="n">model_clue</span><span class="si">}</span><span class="s2"> 2&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Clue source: </span><span class="si">{</span><span class="n">clue_source</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Evaluate the final clue against the board using the same embedding backend.</span>
+<span class="c1"># This lets us compare the generated/fallback clue to the target and assassin words.</span>
+
+<span class="n">all_terms</span> <span class="o">=</span> <span class="p">[</span><span class="n">model_clue</span><span class="p">]</span> <span class="o">+</span> <span class="n">lm_board_words</span>
+<span class="n">all_vectors</span> <span class="o">=</span> <span class="n">embedder</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="n">all_terms</span><span class="p">)</span>
+
+<span class="n">clue_vec</span> <span class="o">=</span> <span class="n">all_vectors</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="mi">1</span><span class="p">]</span>
+<span class="n">board_vecs</span> <span class="o">=</span> <span class="n">all_vectors</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+
+<span class="n">scores</span> <span class="o">=</span> <span class="n">cosine_similarity</span><span class="p">(</span><span class="n">clue_vec</span><span class="p">,</span> <span class="n">board_vecs</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+
+<span class="n">rows</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="k">for</span> <span class="n">word</span><span class="p">,</span> <span class="n">score</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">lm_board_words</span><span class="p">,</span> <span class="n">scores</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">word</span> <span class="ow">in</span> <span class="n">lm_target_words</span><span class="p">:</span>
+        <span class="n">role</span> <span class="o">=</span> <span class="s2">&quot;target&quot;</span>
+    <span class="k">elif</span> <span class="n">word</span> <span class="o">==</span> <span class="n">lm_assassin_word</span><span class="p">:</span>
+        <span class="n">role</span> <span class="o">=</span> <span class="s2">&quot;assassin&quot;</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">role</span> <span class="o">=</span> <span class="s2">&quot;other&quot;</span>
+    <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+        <span class="p">{</span>
+            <span class="s2">&quot;word&quot;</span><span class="p">:</span> <span class="n">word</span><span class="p">,</span>
+            <span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="n">role</span><span class="p">,</span>
+            <span class="s2">&quot;similarity_to_final_clue&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">score</span><span class="p">),</span>
+        <span class="p">}</span>
+    <span class="p">)</span>
+
+<span class="n">model_eval_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span><span class="o">.</span><span class="n">sort_values</span><span class="p">(</span>
+    <span class="s2">&quot;similarity_to_final_clue&quot;</span><span class="p">,</span> <span class="n">ascending</span><span class="o">=</span><span class="kc">False</span>
+<span class="p">)</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+<span class="n">display</span><span class="p">(</span><span class="n">model_eval_df</span><span class="p">)</span>
+
+<span class="n">target_score</span> <span class="o">=</span> <span class="n">model_eval_df</span><span class="p">[</span><span class="n">model_eval_df</span><span class="p">[</span><span class="s2">&quot;role&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;target&quot;</span><span class="p">][</span><span class="s2">&quot;similarity_to_final_clue&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+<span class="n">assassin_score</span> <span class="o">=</span> <span class="n">model_eval_df</span><span class="p">[</span><span class="n">model_eval_df</span><span class="p">[</span><span class="s2">&quot;role&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;assassin&quot;</span><span class="p">][</span><span class="s2">&quot;similarity_to_final_clue&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+<span class="n">safety_margin</span> <span class="o">=</span> <span class="n">target_score</span> <span class="o">-</span> <span class="n">assassin_score</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Mean target similarity: </span><span class="si">{</span><span class="n">target_score</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Assassin similarity: </span><span class="si">{</span><span class="n">assassin_score</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Safety margin: </span><span class="si">{</span><span class="n">safety_margin</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="what-this-result-means">
+<h3>What this result means<a class="headerlink" href="#what-this-result-means" title="Link to this heading">#</a></h3>
+<p>The small language model is allowed to propose a clue, but we validate the clue before using it.</p>
+<p>If the model copies a board word such as <code class="docutils literal notranslate"><span class="pre">galaxy</span></code> or <code class="docutils literal notranslate"><span class="pre">redshift</span></code>, the notebook rejects that clue because a Codenames clue should be a new word that points toward the targets. In that case, the notebook falls back to a stable educational clue such as <code class="docutils literal notranslate"><span class="pre">cosmology</span></code>.</p>
+<p>This keeps the example clear for readers while still showing an important lesson: generated language-model outputs often need validation before they are used in a downstream workflow.</p>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">prompt</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
@@ -849,65 +1032,6 @@ Michelle Ntampaka: Space Telescope Science Institute, Baltimore, MD, USA</p>
 </div>
 </div>
 </div>
-<section id="asking-for-a-short-visible-explanation">
-<h3>Asking for a short visible explanation<a class="headerlink" href="#asking-for-a-short-visible-explanation" title="Link to this heading">#</a></h3>
-<p>The previous cell asks the model for a clue only. We can also ask the model to produce a short visible explanation of its clue.</p>
-<p>This explanation should be interpreted carefully. It is the model’s generated rationale, not direct access to the model’s hidden internal reasoning.</p>
-<div class="cell docutils container">
-<div class="cell_input docutils container">
-<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">generate_codenames_clue_with_explanation</span><span class="p">(</span><span class="n">prompt</span><span class="p">,</span> <span class="n">max_new_tokens</span><span class="o">=</span><span class="mi">80</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Ask the optional small language model for a clue and a short visible explanation.</span>
-
-<span class="sd">    This is useful for teaching, but the explanation should not be interpreted as</span>
-<span class="sd">    the model&#39;s true hidden reasoning.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">if</span> <span class="ow">not</span> <span class="n">RUN_SMALL_LM_EXTENSION</span><span class="p">:</span>
-        <span class="k">return</span> <span class="s2">&quot;Small language-model extension is disabled. Set RUN_SMALL_LM_EXTENSION = True and rerun the setup cell.&quot;</span>
-
-    <span class="n">inputs</span> <span class="o">=</span> <span class="n">tokenizer</span><span class="p">(</span><span class="n">prompt</span><span class="p">,</span> <span class="n">return_tensors</span><span class="o">=</span><span class="s2">&quot;pt&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
-
-    <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
-        <span class="n">outputs</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span>
-            <span class="o">**</span><span class="n">inputs</span><span class="p">,</span>
-            <span class="n">max_new_tokens</span><span class="o">=</span><span class="n">max_new_tokens</span><span class="p">,</span>
-            <span class="n">do_sample</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
-            <span class="n">pad_token_id</span><span class="o">=</span><span class="n">tokenizer</span><span class="o">.</span><span class="n">eos_token_id</span><span class="p">,</span>
-            <span class="n">eos_token_id</span><span class="o">=</span><span class="n">tokenizer</span><span class="o">.</span><span class="n">eos_token_id</span><span class="p">,</span>
-        <span class="p">)</span>
-
-    <span class="n">new_tokens</span> <span class="o">=</span> <span class="n">outputs</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="n">inputs</span><span class="p">[</span><span class="s2">&quot;input_ids&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]:]</span>
-    <span class="k">return</span> <span class="n">tokenizer</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="n">new_tokens</span><span class="p">,</span> <span class="n">skip_special_tokens</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
-
-
-<span class="n">explanation_prompt</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
-<span class="s2">You are playing Codenames.</span>
-
-<span class="s2">Board words:</span>
-<span class="s2">JWST, Hubble, star, spectrum, archive, dust, pixel, quasar</span>
-
-<span class="s2">Target words:</span>
-<span class="s2">JWST, Hubble</span>
-
-<span class="s2">Forbidden words:</span>
-<span class="s2">star, spectrum, archive, dust, pixel, quasar</span>
-
-<span class="s2">Give one clue word with the number 2.</span>
-<span class="s2">Then give one short sentence explaining why the clue links the two target words.</span>
-
-<span class="s2">Use this exact format:</span>
-<span class="s2">Clue: &lt;word&gt; 2</span>
-<span class="s2">Explanation: &lt;one short sentence&gt;</span>
-
-<span class="s2">Answer:</span>
-<span class="s2">&quot;&quot;&quot;</span>
-
-<span class="nb">print</span><span class="p">(</span><span class="n">generate_codenames_clue_with_explanation</span><span class="p">(</span><span class="n">explanation_prompt</span><span class="p">))</span>
-</pre></div>
-</div>
-</div>
-</div>
-<p>The explanation above is useful for inspection, but it should not be treated as the model’s hidden chain of thought. It is a generated text explanation, and generated explanations can be incomplete or unfaithful to the model’s actual decision process.</p>
 </section>
 <section id="comparing-generation-and-embedding-search">
 <h3>Comparing generation and embedding search<a class="headerlink" href="#comparing-generation-and-embedding-search" title="Link to this heading">#</a></h3>
@@ -1018,58 +1142,6 @@ Michelle Ntampaka: Space Telescope Science Institute, Baltimore, MD, USA</p>
 <span class="p">)[</span><span class="mi">0</span><span class="p">][</span><span class="s2">&quot;generated_text&quot;</span><span class="p">]</span>
 
 <span class="nb">print</span><span class="p">(</span><span class="n">output</span><span class="p">)</span>
-</pre></div>
-</div>
-</div>
-</div>
-<div class="cell docutils container">
-<div class="cell_input docutils container">
-<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">sklearn.feature_extraction.text</span><span class="w"> </span><span class="kn">import</span> <span class="n">TfidfVectorizer</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">sklearn.metrics.pairwise</span><span class="w"> </span><span class="kn">import</span> <span class="n">cosine_similarity</span>
-
-<span class="k">def</span><span class="w"> </span><span class="nf">extract_clue</span><span class="p">(</span><span class="n">text</span><span class="p">):</span>
-    <span class="n">match</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;CLUE:\s*([A-Za-z][A-Za-z\-]*)&quot;</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
-    <span class="k">if</span> <span class="n">match</span><span class="p">:</span>
-        <span class="k">return</span> <span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
-    <span class="k">return</span> <span class="kc">None</span>
-
-<span class="n">model_clue</span> <span class="o">=</span> <span class="n">extract_clue</span><span class="p">(</span><span class="n">output</span><span class="p">)</span>
-<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Model clue:&quot;</span><span class="p">,</span> <span class="n">model_clue</span><span class="p">)</span>
-
-<span class="k">def</span><span class="w"> </span><span class="nf">simple_tfidf_similarity</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="n">words</span><span class="p">):</span>
-    <span class="n">vectorizer</span> <span class="o">=</span> <span class="n">TfidfVectorizer</span><span class="p">()</span><span class="o">.</span><span class="n">fit</span><span class="p">([</span><span class="n">query</span><span class="p">]</span> <span class="o">+</span> <span class="n">words</span><span class="p">)</span>
-    <span class="n">vectors</span> <span class="o">=</span> <span class="n">vectorizer</span><span class="o">.</span><span class="n">transform</span><span class="p">([</span><span class="n">query</span><span class="p">]</span> <span class="o">+</span> <span class="n">words</span><span class="p">)</span>
-    <span class="n">sims</span> <span class="o">=</span> <span class="n">cosine_similarity</span><span class="p">(</span><span class="n">vectors</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">vectors</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
-    <span class="k">return</span> <span class="n">sims</span>
-
-<span class="k">if</span> <span class="n">model_clue</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-    <span class="n">sims</span> <span class="o">=</span> <span class="n">simple_tfidf_similarity</span><span class="p">(</span><span class="n">model_clue</span><span class="p">,</span> <span class="n">astronomy_board</span><span class="p">)</span>
-
-    <span class="n">rows</span> <span class="o">=</span> <span class="p">[]</span>
-    <span class="k">for</span> <span class="n">word</span><span class="p">,</span> <span class="n">sim</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">astronomy_board</span><span class="p">,</span> <span class="n">sims</span><span class="p">):</span>
-        <span class="k">if</span> <span class="n">word</span> <span class="ow">in</span> <span class="n">target_words</span><span class="p">:</span>
-            <span class="n">role</span> <span class="o">=</span> <span class="s2">&quot;target&quot;</span>
-        <span class="k">elif</span> <span class="n">word</span> <span class="o">==</span> <span class="n">assassin_word</span><span class="p">:</span>
-            <span class="n">role</span> <span class="o">=</span> <span class="s2">&quot;assassin&quot;</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="n">role</span> <span class="o">=</span> <span class="s2">&quot;other&quot;</span>
-        <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">({</span><span class="s2">&quot;word&quot;</span><span class="p">:</span> <span class="n">word</span><span class="p">,</span> <span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="n">role</span><span class="p">,</span> <span class="s2">&quot;similarity_to_model_clue&quot;</span><span class="p">:</span> <span class="n">sim</span><span class="p">})</span>
-
-    <span class="n">score_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span><span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="s2">&quot;similarity_to_model_clue&quot;</span><span class="p">,</span> <span class="n">ascending</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-    <span class="n">display</span><span class="p">(</span><span class="n">score_df</span><span class="p">)</span>
-
-    <span class="n">target_score</span> <span class="o">=</span> <span class="n">score_df</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="s2">&quot;role == &#39;target&#39;&quot;</span><span class="p">)[</span><span class="s2">&quot;similarity_to_model_clue&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
-    <span class="n">assassin_score</span> <span class="o">=</span> <span class="n">score_df</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="s2">&quot;role == &#39;assassin&#39;&quot;</span><span class="p">)[</span><span class="s2">&quot;similarity_to_model_clue&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
-    <span class="n">safety_margin</span> <span class="o">=</span> <span class="n">target_score</span> <span class="o">-</span> <span class="n">assassin_score</span>
-
-    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Mean target similarity: </span><span class="si">{</span><span class="n">target_score</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Assassin similarity: </span><span class="si">{</span><span class="n">assassin_score</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Safety margin: </span><span class="si">{</span><span class="n">safety_margin</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-<span class="k">else</span><span class="p">:</span>
-    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Could not extract a clue. Try rerunning the generation cell or lowering output constraints.&quot;</span><span class="p">)</span>
 </pre></div>
 </div>
 </div>
@@ -1210,7 +1282,8 @@ Michelle Ntampaka — Space Telescope Science Institute, 3700 San Martin Drive, 
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#avoiding-the-assassin-semantic-risk">8. Avoiding the assassin: semantic risk</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#optional-extension-ask-a-small-language-model-for-clues">9. Optional extension: ask a small language model for clues</a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#asking-for-a-short-visible-explanation">Asking for a short visible explanation</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#generating-and-validating-a-small-model-codenames-clue">Generating and validating a small-model Codenames clue</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#what-this-result-means">What this result means</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#comparing-generation-and-embedding-search">Comparing generation and embedding search</a></li>
 </ul>
 </li>
